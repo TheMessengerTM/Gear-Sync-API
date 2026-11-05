@@ -1,0 +1,62 @@
+# docker compose up --build              → Postgres + GEAR falso + API (http://localhost:8000/docs)
+# docker compose run --rm sync           → roda uma sincronização
+#
+# Para usar a API GEAR real, crie um .env com GEAR_TOKEN e GEAR_BASE_URL (veja .env.example).
+
+x-app: &app
+  build: .
+  environment:
+    DATABASE_URL: postgresql+psycopg://gear:gear@db:5432/gear
+    GEAR_BASE_URL: ${GEAR_BASE_URL:-http://gear-mock:8001/api}
+    GEAR_TOKEN: ${GEAR_TOKEN:-token-falso}
+    GEAR_MIN_INTERVAL: ${GEAR_MIN_INTERVAL:-1.1}
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: gear
+      POSTGRES_PASSWORD: gear
+      POSTGRES_DB: gear
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gear -d gear"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  gear-mock:
+    build: .
+    command: uvicorn gear_sync.mock_gear:app --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+
+  api:
+    <<: *app
+    ports:
+      - "8000:8000"
+    healthcheck:  # só fica "healthy" depois das migrations, quando /health responde
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  sync:
+    <<: *app
+    command: gear-sync sync
+    profiles: ["sync"]
+    depends_on:
+      api:  # a API aplica as migrations ao subir; espera ela ficar pronta
+        condition: service_healthy
+      gear-mock:
+        condition: service_started
+
+volumes:
+  pgdata:

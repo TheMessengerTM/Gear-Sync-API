@@ -1,0 +1,19 @@
+# Ambiente
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.coverage
+*.egg-info/
+
+# Segredos — nunca versionar
+.env
+*token*.txt
+
+# Dados reais exportados da API (contêm dados pessoais — LGPD)
+exportacao/
+gear_dump/
+*.csv
+*.xlsx
+*.db
